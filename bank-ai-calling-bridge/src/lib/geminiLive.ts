@@ -1,10 +1,5 @@
 import { WebSocket } from 'ws';
-import {
-    mulawToPcmTimed,
-    resamplePcmTimed,
-    pcmToMulawTimed,
-    calculateRms,
-} from './audioUtils';
+import {mulawToPcmTimed,resamplePcmTimed,pcmToMulawTimed,calculateRms,} from './audioUtils';
 
 
 
@@ -152,11 +147,7 @@ function getGeminiWsUrl(): string {
     );
 }
 
-/**
- * Builds the system prompt for a bank outbound call.
- * campaignPrompt is admin-authored per campaign (Campaign Configuration
- * module) — we wrap it with call-mechanics guidance that stays constant.
- */
+
 function createSystemPrompt(
     campaignPrompt: string,
     campaignName: string,
@@ -170,10 +161,13 @@ ${campaignPrompt}
 
 Guidelines:
 1. Stay in character: Professional, warm, and respectful of the customer's time.
-2. Active Listening: Acknowledge what the customer says before responding. Ask only one question per turn.
-3. Keep it natural: Output only what is spoken on a phone call. No meta-talk, no stage directions.
-4. Respect refusals: If the customer isn't interested or asks to end the call, thank them politely and end the call immediately — do not persist.
-5. Conclusion: When the call reaches a natural end, speak this EXACT phrase in "${language}": "Thank you for your time today. Have a great day. Goodbye." Then immediately call the end_call tool.
+2. Speak like a real human on the phone, not a script: Use contractions ("I'll", "that's", "you're"). Keep most responses to 1-2 short sentences — real phone conversations are brief back-and-forth, not long explanations delivered at once.
+3. Use natural acknowledgments: Start responses with brief, natural reactions where appropriate ("Sure,", "Got it,", "I understand,", "Right,") before continuing — the way a real person pauses to process before replying.
+4. Active Listening: Acknowledge what the customer says before responding. Ask only one question per turn.
+5. Don't over-explain: Give the key point first. Only add detail if the customer asks for more — don't front-load everything in one long turn.
+6. Keep it natural: Output only what is spoken on a phone call. No meta-talk, no stage directions.
+7. Respect refusals: If the customer isn't interested or asks to end the call, thank them politely and end the call immediately — do not persist.
+8. Conclusion: When the call reaches a natural end, speak this EXACT phrase in "${language}": "Thank you for your time today. Have a great day. Goodbye." Then immediately call the end_call tool.
 
 Reporting on end_call: You must fill in every field accurately based on the actual conversation that just happened, since this is the ONLY record your team will have of this call:
 - summary: 2-4 plain-English sentences describing what was discussed and the outcome.
@@ -209,7 +203,7 @@ export async function connectToGemini(
         const connectT = nowMs();
 
         ws.on('open', () => {
-            logWithTime(`[Gemini] ✅ WebSocket OPEN (+${(nowMs() - connectT).toFixed(0)}ms)`);
+            logWithTime(`[Gemini]  WebSocket OPEN (+${(nowMs() - connectT).toFixed(0)}ms)`);
 
             sessionGates.set(ws, {
                 isAiSpeaking: false,
@@ -295,7 +289,7 @@ export async function connectToGemini(
 
             if ((response.setupComplete || response.setup_complete) && !isSetupComplete) {
                 isSetupComplete = true;
-                logWithTime(`[Gemini] ✅ SETUP_COMPLETE @${msgT.toFixed(1)}ms`);
+                logWithTime(`[Gemini] SETUP_COMPLETE @${msgT.toFixed(1)}ms`);
 
                 ws.send(JSON.stringify({
                     client_content: {
