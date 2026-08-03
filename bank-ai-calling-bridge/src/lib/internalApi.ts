@@ -72,8 +72,17 @@ export interface CallSummaryInput {
     interested?: boolean;
     loanAmount?: string;
     callbackRequired?: boolean;
+    callOutcome?: string;
+    keyObjection?: string;
+    nextAction?: string;
+    followUpDate?: string;
+    priority?: string;
 }
 
 export async function saveCallSummary(callId: string, summary: CallSummaryInput): Promise<void> {
     await internalFetch(`/api/internal/calls/${callId}/summary`, summary);
+}
+
+export async function saveRecordingUrl(callId: string, recordingUrl: string): Promise<void> {
+    await internalFetch(`/api/internal/calls/${callId}/recording`, { recordingUrl });
 }

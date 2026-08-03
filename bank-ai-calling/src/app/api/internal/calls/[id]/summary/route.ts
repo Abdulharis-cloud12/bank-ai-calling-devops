@@ -10,16 +10,18 @@ export async function POST(
   if (authError) return authError;
 
   const { id: callId } = await params;
-  const { summaryText, sentiment, interested, loanAmount, callbackRequired } = await req.json();
+  const {summaryText,sentiment,interested,loanAmount,callbackRequired,callOutcome,keyObjection,nextAction,followUpDate,priority,} = await req.json();
 
   if (!summaryText) {
     return NextResponse.json({ error: "summaryText is required" }, { status: 400 });
   }
 
+  const data = {summaryText,sentiment,interested,loanAmount,callbackRequired,callOutcome,keyObjection,nextAction,followUpDate,priority, };
+
   const summary = await prisma.callSummary.upsert({
     where: { callId },
-    update: { summaryText, sentiment, interested, loanAmount, callbackRequired },
-    create: { callId, summaryText, sentiment, interested, loanAmount, callbackRequired },
+    update: data,
+    create: { callId, ...data },
   });
 
   return NextResponse.json({ summary });

@@ -1,5 +1,5 @@
 import { WebSocket } from 'ws';
-import {mulawToPcmTimed,resamplePcmTimed,pcmToMulawTimed,calculateRms,} from './audioUtils';
+import { mulawToPcmTimed, resamplePcmTimed, pcmToMulawTimed, calculateRms, } from './audioUtils';
 
 
 
@@ -179,12 +179,24 @@ Reporting on end_call: You must fill in every field accurately based on the actu
 Greeting: Introduce yourself and the bank, briefly explain why you're calling, per the campaign brief above.`;
 }
 
+export type CallOutcome =
+    | 'INTERESTED' | 'FOLLOW_UP_REQUIRED' | 'CALL_BACK_REQUESTED' | 'NOT_INTERESTED'
+    | 'PRICE_OBJECTION' | 'NEEDS_DISCUSSION' | 'DECISION_PENDING' | 'MEETING_REQUIRED'
+    | 'DEMO_REQUIRED' | 'CONVERTED' | 'NO_RESPONSE' | 'WRONG_NUMBER' | 'LOST';
+
+export type Priority = 'HIGH' | 'MEDIUM' | 'LOW' | 'NONE';
+
 export interface EndCallArgs {
     summary: string;
     sentiment: 'positive' | 'neutral' | 'negative';
     interested: boolean;
     loanAmount?: string;
     callbackRequired: boolean;
+    callOutcome?: CallOutcome;
+    keyObjection?: string;
+    nextAction?: string;
+    followUpDate?: string;
+    priority?: Priority;
 }
 
 export async function connectToGemini(
@@ -247,6 +259,14 @@ export async function connectToGemini(
                                     interested: { type: 'BOOLEAN', description: 'True only if the customer clearly expressed genuine interest.' },
                                     loanAmount: { type: 'STRING', description: 'Specific amount mentioned, e.g. "Rs. 5,00,000". Omit if none was mentioned.' },
                                     callbackRequired: { type: 'BOOLEAN', description: 'True if the customer asked for or agreed to a callback.' },
+                                    callOutcome: {
+                                        type: 'STRING',
+                                        description: 'Pick exactly ONE that best matches how the call actually ended: INTERESTED, FOLLOW_UP_REQUIRED, CALL_BACK_REQUESTED, NOT_INTERESTED, PRICE_OBJECTION, NEEDS_DISCUSSION, DECISION_PENDING, MEETING_REQUIRED, DEMO_REQUIRED, CONVERTED, NO_RESPONSE, WRONG_NUMBER, LOST.',
+                                    },
+                                    keyObjection: { type: 'STRING', description: 'The main hesitation or objection the customer raised, if any. Omit if none was raised.' },
+                                    nextAction: { type: 'STRING', description: 'A short, concrete next step for the sales team, e.g. "Send quotation", "Follow up after customer discusses with partner". Base this only on what was actually said.' },
+                                    followUpDate: { type: 'STRING', description: 'ONLY include this if the customer stated a specific day/time (e.g. "Friday", "tomorrow morning"). Never invent or guess a date — omit this field entirely if no date was mentioned.' },
+                                    priority: { type: 'STRING', description: 'One of: HIGH, MEDIUM, LOW, NONE — based on urgency and how ready the customer seems to move forward.' },
                                 },
                                 required: ['summary', 'sentiment', 'interested', 'callbackRequired'],
                             },
@@ -349,6 +369,13 @@ export async function connectToGemini(
                         try {
                             if (fn.name === 'end_call') {
                                 const rawArgs = fn.args ?? {};
+                                const VALID_OUTCOMES: CallOutcome[] = [
+                                    'INTERESTED', 'FOLLOW_UP_REQUIRED', 'CALL_BACK_REQUESTED', 'NOT_INTERESTED',
+                                    'PRICE_OBJECTION', 'NEEDS_DISCUSSION', 'DECISION_PENDING', 'MEETING_REQUIRED',
+                                    'DEMO_REQUIRED', 'CONVERTED', 'NO_RESPONSE', 'WRONG_NUMBER', 'LOST',
+                                ];
+                                const VALID_PRIORITIES: Priority[] = ['HIGH', 'MEDIUM', 'LOW', 'NONE'];
+
                                 const endCallArgs: EndCallArgs = {
                                     summary: rawArgs.summary || 'No summary provided by the model.',
                                     sentiment: ['positive', 'neutral', 'negative'].includes(rawArgs.sentiment)
@@ -357,6 +384,11 @@ export async function connectToGemini(
                                     interested: Boolean(rawArgs.interested),
                                     loanAmount: rawArgs.loanAmount || undefined,
                                     callbackRequired: Boolean(rawArgs.callbackRequired),
+                                    callOutcome: VALID_OUTCOMES.includes(rawArgs.callOutcome) ? rawArgs.callOutcome : undefined,
+                                    keyObjection: rawArgs.keyObjection || undefined,
+                                    nextAction: rawArgs.nextAction || undefined,
+                                    followUpDate: rawArgs.followUpDate || undefined,
+                                    priority: VALID_PRIORITIES.includes(rawArgs.priority) ? rawArgs.priority : undefined,
                                 };
                                 onToolCall('end_call', endCallArgs);
                             }

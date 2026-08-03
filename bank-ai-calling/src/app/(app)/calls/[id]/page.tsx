@@ -11,6 +11,7 @@ export default async function CallDetailPage({
 }) {
   const session = await auth();
   if (!session?.user) redirect("/login");
+
   const { id } = await params;
 
   const call = await prisma.call.findUnique({
@@ -22,13 +23,18 @@ export default async function CallDetailPage({
       transcript: { include: { turns: { orderBy: { spokenAt: "asc" } } } },
     },
   });
+
   if (!call) notFound();
 
   const durationText = call.durationSeconds
     ? `${Math.floor(call.durationSeconds / 60)}m ${Math.floor(call.durationSeconds % 60)}s`
     : call.startedAt && call.endedAt
       ? `${Math.round((call.endedAt.getTime() - call.startedAt.getTime()) / 1000)}s`
-      : "—";
+      : "-";
+
+  const outcomeLabel = call.summary?.callOutcome
+    ? call.summary.callOutcome.replace(/_/g, " ")
+    : null;
 
   return (
     <div className="min-h-screen w-full bg-[#E9E0CF] p-8">
@@ -55,6 +61,17 @@ export default async function CallDetailPage({
           </div>
         )}
 
+        {/* Call recording player — shown once a recording URL is available */}
+        {call.recordingUrl && (
+          <div className="mt-6 rounded-lg border border-[#BA9B5F]/30 bg-[#F5F0E6] p-4">
+            <h2 className="text-sm font-medium text-[#132B23]">Call Recording</h2>
+            <audio controls className="mt-2 w-full">
+              <source src={call.recordingUrl} type="audio/mpeg" />
+              Your browser does not support the audio element.
+            </audio>
+          </div>
+        )}
+
         {call.summary ? (
           <div className="mt-6 space-y-4">
             <div className="rounded-lg border border-[#BA9B5F]/30 bg-[#F5F0E6] p-4">
@@ -64,10 +81,28 @@ export default async function CallDetailPage({
 
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               <Stat label="Interested" value={call.summary.interested === true ? "Yes" : call.summary.interested === false ? "No" : "Unknown"} />
-              <Stat label="Sentiment" value={call.summary.sentiment ?? "—"} />
-              <Stat label="Loan Amount" value={call.summary.loanAmount ?? "—"} />
+              <Stat label="Sentiment" value={call.summary.sentiment ?? "-"} />
+              <Stat label="Loan Amount" value={call.summary.loanAmount ?? "-"} />
               <Stat label="Callback Needed" value={call.summary.callbackRequired === true ? "Yes" : call.summary.callbackRequired === false ? "No" : "Unknown"} />
             </div>
+
+            {(outcomeLabel || call.summary.nextAction || call.summary.priority || call.summary.followUpDate || call.summary.keyObjection) && (
+              <div className="rounded-lg border border-[#BA9B5F]/30 bg-[#F5F0E6] p-4">
+                <h2 className="mb-3 text-sm font-medium text-[#132B23]">Next Steps</h2>
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  {outcomeLabel && <Stat label="Call Outcome" value={outcomeLabel} />}
+                  {call.summary.priority && <Stat label="Priority" value={call.summary.priority} />}
+                  {call.summary.followUpDate && <Stat label="Follow-up" value={call.summary.followUpDate} />}
+                  {call.summary.nextAction && <Stat label="Next Action" value={call.summary.nextAction} />}
+                </div>
+                {call.summary.keyObjection && (
+                  <p className="mt-3 text-sm text-[#5E775E]">
+                    <span className="font-medium text-[#132B23]">Key objection: </span>
+                    {call.summary.keyObjection}
+                  </p>
+                )}
+              </div>
+            )}
           </div>
         ) : (
           <p className="mt-6 rounded-lg border border-[#BA9B5F]/30 bg-[#F5F0E6] p-4 text-sm text-[#5E775E]">

@@ -168,11 +168,12 @@ model Call {
   status         CallStatus @default(QUEUED)
 
   startedAt      DateTime?
-  endedAt        DateTime?
-  durationSeconds Int?
+    endedAt        DateTime?
+    durationSeconds Int?
+    recordingUrl   String?
 
-  transcript     Transcript?
-  summary        CallSummary?
+    transcript     Transcript?
+    summary        CallSummary?
 
   createdAt      DateTime   @default(now())
 
@@ -210,22 +211,54 @@ model Transcript {
 // MODULE 7: Transcript & AI Summary
 // ---------------------------------------------------------------------
 
-model CallSummary {
-  id               String   @id @default(cuid())
-  callId           String   @unique
-  call             Call     @relation(fields: [callId], references: [id], onDelete: Cascade)
+enum CallOutcome {
+  INTERESTED
+  FOLLOW_UP_REQUIRED
+  CALL_BACK_REQUESTED
+  NOT_INTERESTED
+  PRICE_OBJECTION
+  NEEDS_DISCUSSION
+  DECISION_PENDING
+  MEETING_REQUIRED
+  DEMO_REQUIRED
+  CONVERTED
+  NO_RESPONSE
+  WRONG_NUMBER
+  LOST
+}
 
-  summaryText      String   @db.Text
-  sentiment        String?  // e.g. "positive", "neutral", "negative"
+enum Priority {
+  HIGH
+  MEDIUM
+  LOW
+  NONE
+}
+
+model CallSummary {
+  id               String       @id @default(cuid())
+  callId           String       @unique
+  call             Call         @relation(fields: [callId], references: [id], onDelete: Cascade)
+
+  summaryText      String       @db.Text
+  sentiment        String?      // e.g. "positive", "neutral", "negative"
   interested       Boolean?
   loanAmount       String?
   callbackRequired Boolean?
 
-  createdAt        DateTime @default(now())
+  // Structured classification, per the Manual Call → Summary & Next Action
+  // spec — kept optional since older call summaries won't have these,
+  // and the AI is explicitly instructed to never invent a value it wasn't
+  // given (e.g. no follow-up date if the customer didn't mention one).
+  callOutcome      CallOutcome?
+  keyObjection     String?
+  nextAction       String?
+  followUpDate     String?      // free text — "Friday", "tomorrow", "Not specified" — deliberately not a strict Date type, since the AI must not invent a specific date from a vague one
+  priority         Priority?
+
+  createdAt        DateTime     @default(now())
 
   @@map("call_summaries")
 }
-
 // ---------------------------------------------------------------------
 // MODULE 8: Billing
 // ---------------------------------------------------------------------

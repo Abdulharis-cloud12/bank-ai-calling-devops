@@ -17,7 +17,7 @@ export async function initiateCall(customerPhone: string, callId: string): Promi
 
     console.log(`[Twilio] Initiating call to ${customerPhone} for callId=${callId}`);
 
-    const call = await client.calls.create({
+   const call = await client.calls.create({
         to: customerPhone,
         from: twilioPhoneNumber,
         url: twimlUrl,
@@ -25,6 +25,10 @@ export async function initiateCall(customerPhone: string, callId: string): Promi
         statusCallback: `${backendUrl}/api/call-status`,
         statusCallbackEvent: ['initiated', 'ringing', 'answered', 'completed'],
         statusCallbackMethod: 'POST',
+        record: true,
+        recordingStatusCallback: `${backendUrl}/api/recording-status?callId=${encodeURIComponent(callId)}`,
+        recordingStatusCallbackEvent: ['completed'],
+        recordingStatusCallbackMethod: 'POST',
     });
 
     console.log(`[Twilio] Call initiated: ${call.sid}`);

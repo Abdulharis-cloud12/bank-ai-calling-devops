@@ -3,7 +3,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { createServer } from 'http';
 import { parse as parseUrl } from 'url';
 import { connectToGemini, sendAudioToGemini, closeGemini, EndCallArgs } from './lib/geminiLive';
-import { getCallDetails, updateCallStatus, appendTranscriptTurn, saveCallSummary } from './lib/internalApi';
+import { getCallDetails, updateCallStatus, appendTranscriptTurn, saveCallSummary, saveRecordingUrl } from './lib/internalApi';
 import { summarizeCall } from './lib/summarization';
 import { generateTwiML, getTwilioClient } from './lib/twilio';
 import { campaignQueue } from './lib/campaignQueue';
@@ -11,7 +11,7 @@ import { campaignQueue } from './lib/campaignQueue';
 const PORT = parseInt(process.env.PORT || '8080', 10);
 const BACKEND_URL = process.env.BACKEND_URL || `http://localhost:${PORT}`;
 
-const requiredEnvVars = ['TWILIO_ACCOUNT_SID','TWILIO_AUTH_TOKEN','TWILIO_PHONE_NUMBER','GOOGLE_GENAI_API_KEY','BACKEND_URL', 'MAIN_APP_URL','INTERNAL_API_SECRET',];
+const requiredEnvVars = ['TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN', 'TWILIO_PHONE_NUMBER', 'GOOGLE_GENAI_API_KEY', 'BACKEND_URL', 'MAIN_APP_URL', 'INTERNAL_API_SECRET',];
 
 const missing = requiredEnvVars.filter((key) => !process.env[key]);
 if (missing.length > 0) {
@@ -90,6 +90,38 @@ const server = createServer(async (req, res) => {
         return;
     }
 
+    if (path === '/api/recording-status' && req.method === 'POST') {
+        const callId = parsedUrl.query.callId as string | undefined;
+
+        let body = '';
+        req.on('data', (chunk) => { body += chunk.toString(); });
+        req.on('end', async () => {
+            res.writeHead(200);
+            res.end();
+
+            if (!callId) return;
+
+            const params = new URLSearchParams(body);
+            const recordingUrl = params.get('RecordingUrl');
+            const recordingStatus = params.get('RecordingStatus');
+
+            console.log(`[Recording] callId=${callId} status=${recordingStatus} url=${recordingUrl}`);
+
+            if (recordingStatus === 'completed' && recordingUrl) {
+                try {
+                    // Twilio's RecordingUrl needs ".mp3" appended to fetch
+                    // the actual audio file directly — without it, it
+                    // points at a JSON metadata resource instead.
+                    await saveRecordingUrl(callId, `${recordingUrl}.mp3`);
+                    console.log(`[Recording] Saved recording URL for call ${callId}`);
+                } catch (err) {
+                    console.error(`[Recording] Failed to save recording URL for ${callId}:`, err);
+                }
+            }
+        });
+        return;
+    }
+
     if (path === '/api/trigger-campaign' && req.method === 'POST') {
         let body = '';
         req.on('data', (chunk) => { body += chunk.toString(); });
@@ -156,7 +188,7 @@ wss.on('connection', (twilioWs: WebSocket) => {
         } catch (err) {
             console.error('[Bridge] Failed to update call status:', err);
         }
-       try {
+        try {
             if (session.endCallSummary) {
                 await saveCallSummary(session.callId, {
                     summaryText: session.endCallSummary.summary,
@@ -164,9 +196,15 @@ wss.on('connection', (twilioWs: WebSocket) => {
                     interested: session.endCallSummary.interested,
                     loanAmount: session.endCallSummary.loanAmount,
                     callbackRequired: session.endCallSummary.callbackRequired,
+                    callOutcome: session.endCallSummary.callOutcome,
+                    keyObjection: session.endCallSummary.keyObjection,
+                    nextAction: session.endCallSummary.nextAction,
+                    followUpDate: session.endCallSummary.followUpDate,
+                    priority: session.endCallSummary.priority,
                 });
                 console.log(`[Bridge] Saved AI-reported summary for call ${session.callId}`);
-            } else if (session.transcript.length > 0) {
+            }
+            else if (session.transcript.length > 0) {
                 await summarizeCall(session.callId, session.campaignPrompt, session.transcript, durationSeconds);
             } else {
                 console.warn(`[Bridge] No summary data for call ${session.callId} — saving fallback record.`);
@@ -189,12 +227,12 @@ wss.on('connection', (twilioWs: WebSocket) => {
     };
 
     twilioWs.on('close', () => {
-        if (currentSession) endCall(currentSession, 'COMPLETED').catch(() => {});
+        if (currentSession) endCall(currentSession, 'COMPLETED').catch(() => { });
     });
 
     twilioWs.on('error', (err) => {
         console.error('[Twilio WS] Error:', err);
-        if (currentSession) endCall(currentSession, 'FAILED').catch(() => {});
+        if (currentSession) endCall(currentSession, 'FAILED').catch(() => { });
     });
 
     twilioWs.on('message', async (data: Buffer) => {
@@ -253,13 +291,13 @@ wss.on('connection', (twilioWs: WebSocket) => {
                         if (tool === 'end_call') {
                             console.log('[Bridge] end_call tool invoked with args:', args);
                             newSession.endCallSummary = args;
-                            getTwilioClient().calls(callSid).update({ status: 'completed' }).catch(() => {});
+                            getTwilioClient().calls(callSid).update({ status: 'completed' }).catch(() => { });
                         }
                     },
                     () => {
                         console.log('[Gemini] Connection closed — ending call');
-                        getTwilioClient().calls(callSid).update({ status: 'completed' }).catch(() => {});
-                        if (currentSession) endCall(currentSession, 'COMPLETED').catch(() => {});
+                        getTwilioClient().calls(callSid).update({ status: 'completed' }).catch(() => { });
+                        if (currentSession) endCall(currentSession, 'COMPLETED').catch(() => { });
                     }
                 );
                 currentSession.geminiWs = geminiWs;
