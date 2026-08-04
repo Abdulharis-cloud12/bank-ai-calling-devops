@@ -31,6 +31,8 @@ export async function GET(
   });
 
   if (!twilioResponse.ok || !twilioResponse.body) {
+    const errorText = await twilioResponse.text().catch(() => "");
+    console.error(`[Recordings] Twilio fetch failed: status=${twilioResponse.status} body=${errorText}`);
     return NextResponse.json({ error: "Failed to fetch recording from Twilio" }, { status: 502 });
   }
 
