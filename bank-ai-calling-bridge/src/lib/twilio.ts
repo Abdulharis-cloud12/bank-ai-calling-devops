@@ -22,7 +22,7 @@ export async function initiateCall(customerPhone: string, callId: string): Promi
         from: twilioPhoneNumber,
         url: twimlUrl,
         method: 'POST',
-        statusCallback: `${backendUrl}/api/call-status`,
+        statusCallback: `${backendUrl}/api/call-status?callId=${encodeURIComponent(callId)}`,
         statusCallbackEvent: ['initiated', 'ringing', 'answered', 'completed'],
         statusCallbackMethod: 'POST',
         record: true,
