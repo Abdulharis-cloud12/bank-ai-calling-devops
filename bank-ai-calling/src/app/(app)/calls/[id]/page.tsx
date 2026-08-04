@@ -61,12 +61,11 @@ export default async function CallDetailPage({
           </div>
         )}
 
-        {/* Call recording player — shown once a recording URL is available */}
         {call.recordingUrl && (
           <div className="mt-6 rounded-lg border border-[#BA9B5F]/30 bg-[#F5F0E6] p-4">
             <h2 className="text-sm font-medium text-[#132B23]">Call Recording</h2>
             <audio controls className="mt-2 w-full">
-              <source src={call.recordingUrl} type="audio/mpeg" />
+              <source src={`/api/recordings/${call.id}`} type="audio/mpeg" />
               Your browser does not support the audio element.
             </audio>
           </div>
