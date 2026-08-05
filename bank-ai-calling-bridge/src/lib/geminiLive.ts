@@ -153,8 +153,13 @@ function createSystemPrompt(
     campaignName: string,
     customerName: string,
     language: string,
+    priorContext?: string,
 ): string {
-    return `You are ${AGENT_NAME}, calling on behalf of a bank. You are speaking with ${customerName}. Conduct the entire call in "${language}". Translate all instructions dynamically.
+    const reconnectNote = priorContext
+        ? `\n\nIMPORTANT: The call connection was briefly interrupted. Here is what was already discussed before the interruption:\n${priorContext}\n\nContinue the conversation naturally from here — do NOT greet the customer again or restart the conversation. Pick up as if there was just a brief pause.`
+        : '';
+
+    return `You are ${AGENT_NAME}, calling on behalf of a bank. You are speaking with ${customerName}. Conduct the entire call in "${language}". Translate all instructions dynamically.${reconnectNote}
 
 Campaign brief:
 ${campaignPrompt}
@@ -208,6 +213,7 @@ export async function connectToGemini(
     onTranscriptionReceived: (role: 'CUSTOMER' | 'AI', text: string) => void,
     onToolCall: (toolName: string, args: EndCallArgs) => void,
     onClose: () => void,
+    priorContext?: string,
 ): Promise<WebSocket> {
     return new Promise((resolve, reject) => {
         const ws = new WebSocket(getGeminiWsUrl(), { perMessageDeflate: false });
@@ -245,7 +251,7 @@ export async function connectToGemini(
                         },
                     },
                     system_instruction: {
-                        parts: [{ text: createSystemPrompt(campaignPrompt, campaignName, customerName, language) }],
+                        parts: [{ text: createSystemPrompt(campaignPrompt, campaignName, customerName, language, priorContext) }],
                     },
                     tools: [{
                         function_declarations: [{

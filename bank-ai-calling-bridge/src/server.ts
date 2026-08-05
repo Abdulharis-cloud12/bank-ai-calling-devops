@@ -11,7 +11,7 @@ import { campaignQueue } from './lib/campaignQueue';
 const PORT = parseInt(process.env.PORT || '8080', 10);
 const BACKEND_URL = process.env.BACKEND_URL || `http://localhost:${PORT}`;
 
-const requiredEnvVars = ['TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN', 'TWILIO_PHONE_NUMBER', 'GOOGLE_GENAI_API_KEY', 'BACKEND_URL', 'MAIN_APP_URL', 'INTERNAL_API_SECRET',];
+const requiredEnvVars = ['TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN', 'TWILIO_PHONE_NUMBER', 'GOOGLE_GENAI_API_KEY', 'BACKEND_URL', 'MAIN_APP_URL', 'INTERNAL_API_SECRET'];
 
 const missing = requiredEnvVars.filter((key) => !process.env[key]);
 if (missing.length > 0) {
@@ -25,8 +25,6 @@ function personalizePrompt(template: string, customerNotes: string | null): stri
         : "No additional customer data was provided for this call.";
     return template.replace(/\{\{customer_data\}\}/g, data);
 }
-
-
 
 const server = createServer(async (req, res) => {
     const parsedUrl = parseUrl(req.url || '', true);
@@ -65,12 +63,9 @@ const server = createServer(async (req, res) => {
             const callStatus = params.get('CallStatus');
             const callSid = params.get('CallSid');
             console.log(`[CallStatus] callId=${callId} callSid=${callSid} status=${callStatus}`);
-
             res.writeHead(200);
             res.end();
-
             if (!callId) return;
-
             const NEVER_CONNECTED = ['no-answer', 'busy', 'failed', 'canceled'];
             if (!callStatus || !NEVER_CONNECTED.includes(callStatus)) return;
             try {
@@ -92,26 +87,18 @@ const server = createServer(async (req, res) => {
 
     if (path === '/api/recording-status' && req.method === 'POST') {
         const callId = parsedUrl.query.callId as string | undefined;
-
         let body = '';
         req.on('data', (chunk) => { body += chunk.toString(); });
         req.on('end', async () => {
             res.writeHead(200);
             res.end();
-
             if (!callId) return;
-
             const params = new URLSearchParams(body);
             const recordingUrl = params.get('RecordingUrl');
             const recordingStatus = params.get('RecordingStatus');
-
             console.log(`[Recording] callId=${callId} status=${recordingStatus} url=${recordingUrl}`);
-
             if (recordingStatus === 'completed' && recordingUrl) {
                 try {
-                    // Twilio's RecordingUrl needs ".mp3" appended to fetch
-                    // the actual audio file directly — without it, it
-                    // points at a JSON metadata resource instead.
                     await saveRecordingUrl(callId, `${recordingUrl}.mp3`);
                     console.log(`[Recording] Saved recording URL for call ${callId}`);
                 } catch (err) {
@@ -145,13 +132,9 @@ const server = createServer(async (req, res) => {
         });
         return;
     }
-
     res.writeHead(404);
     res.end('Not found');
 });
-
-
-const wss = new WebSocketServer({ server, path: '/media-stream' });
 
 interface SessionState {
     streamSid: string;
@@ -171,68 +154,135 @@ interface SessionState {
 
 const sessions: Map<string, SessionState> = new Map();
 
+const cleanupSession = (session: SessionState) => {
+    if (session.geminiWs) closeGemini(session.geminiWs);
+    sessions.delete(session.streamSid);
+};
+
+const endCall = async (session: SessionState, finalStatus: 'COMPLETED' | 'FAILED') => {
+    if (session.isEnded) return;
+    session.isEnded = true;
+
+    const durationSeconds = (Date.now() - session.startTime) / 1000;
+
+    try {
+        await updateCallStatus(session.callId, finalStatus);
+    } catch (err) {
+        console.error('[Bridge] Failed to update call status:', err);
+    }
+
+    try {
+        if (session.endCallSummary) {
+            await saveCallSummary(session.callId, {
+                summaryText: session.endCallSummary.summary,
+                sentiment: session.endCallSummary.sentiment,
+                interested: session.endCallSummary.interested,
+                loanAmount: session.endCallSummary.loanAmount,
+                callbackRequired: session.endCallSummary.callbackRequired,
+                callOutcome: session.endCallSummary.callOutcome,
+                keyObjection: session.endCallSummary.keyObjection,
+                nextAction: session.endCallSummary.nextAction,
+                followUpDate: session.endCallSummary.followUpDate,
+                priority: session.endCallSummary.priority,
+            });
+            console.log(`[Bridge] Saved AI-reported summary for call ${session.callId}`);
+        }
+        else if (session.transcript.length > 0) {
+            await summarizeCall(session.callId, session.campaignPrompt, session.transcript, durationSeconds);
+        } else {
+            console.warn(`[Bridge] No summary data for call ${session.callId} — saving fallback record.`);
+            await saveCallSummary(session.callId, {
+                summaryText: `Call ran for ${Math.round(durationSeconds)}s but ended before a summary could be recorded (connection interrupted mid-call). No outcome data available — the customer may have expressed real interest or requests that were not captured. Consider a manual follow-up call.`,
+                sentiment: "unknown",
+            });
+        }
+    } catch (err) {
+        console.error('[Bridge] Failed to save call summary:', err);
+    }
+
+    cleanupSession(session);
+
+    await campaignQueue.add(
+        'trigger-campaign',
+        { campaignId: session.campaignId },
+        { delay: 3000 }
+    );
+};
+
+const MAX_RECONNECT_ATTEMPTS = 1;
+
+async function connectGeminiWithRetry(
+    session: SessionState,
+    twilioWs: WebSocket,
+    callSid: string,
+    attempt: number = 0,
+): Promise<WebSocket> {
+    const priorContext = attempt > 0 && session.transcript.length > 0
+        ? session.transcript.map((t) => `${t.role === 'AI' ? session.customerName + "'s bank representative" : session.customerName}: ${t.text}`).join('\n')
+        : undefined;
+
+    return connectToGemini(
+        session.campaignPrompt,
+        session.campaignName,
+        session.customerName,
+        session.language,
+        (audio) => {
+            twilioWs.send(JSON.stringify({ event: 'media', streamSid: session.streamSid, media: { payload: audio } }));
+        },
+        (role, text) => {
+            session.transcript.push({ role, text });
+            appendTranscriptTurn(session.callId, role, text).catch((err) =>
+                console.error('[Bridge] Failed to append transcript turn:', err)
+            );
+        },
+        (tool, args) => {
+            if (tool === 'end_call') {
+                console.log('[Bridge] end_call tool invoked with args:', args);
+                session.endCallSummary = args;
+                getTwilioClient().calls(callSid).update({ status: 'completed' }).catch(() => {});
+            }
+        },
+        async () => {
+            if (session.endCallSummary) {
+                console.log('[Gemini] Connection closed after end_call — ending call normally');
+                getTwilioClient().calls(callSid).update({ status: 'completed' }).catch(() => {});
+                endCall(session, 'COMPLETED').catch(() => {});
+                return;
+            }
+
+            if (attempt < MAX_RECONNECT_ATTEMPTS) {
+                console.log(`[Gemini] Unexpected disconnect — attempting reconnect (attempt ${attempt + 1}/${MAX_RECONNECT_ATTEMPTS})`);
+                try {
+                    const newWs = await connectGeminiWithRetry(session, twilioWs, callSid, attempt + 1);
+                    session.geminiWs = newWs;
+                } catch (err) {
+                    console.error('[Gemini] Reconnect attempt failed:', err);
+                    getTwilioClient().calls(callSid).update({ status: 'completed' }).catch(() => {});
+                    endCall(session, 'COMPLETED').catch(() => {});
+                }
+                return;
+            }
+
+            console.log('[Gemini] Connection closed after retry — ending call');
+            getTwilioClient().calls(callSid).update({ status: 'completed' }).catch(() => {});
+            endCall(session, 'COMPLETED').catch(() => {});
+        },
+        priorContext,
+    );
+}
+
+const wss = new WebSocketServer({ server, path: '/media-stream' });
+
 wss.on('connection', (twilioWs: WebSocket) => {
     let currentSession: SessionState | null = null;
 
-    const cleanupSession = (session: SessionState) => {
-        if (session.geminiWs) closeGemini(session.geminiWs);
-        sessions.delete(session.streamSid);
-    };
-
-    const endCall = async (session: SessionState, finalStatus: 'COMPLETED' | 'FAILED') => {
-        if (session.isEnded) return;
-        session.isEnded = true;
-        const durationSeconds = (Date.now() - session.startTime) / 1000;
-        try {
-            await updateCallStatus(session.callId, finalStatus);
-        } catch (err) {
-            console.error('[Bridge] Failed to update call status:', err);
-        }
-        try {
-            if (session.endCallSummary) {
-                await saveCallSummary(session.callId, {
-                    summaryText: session.endCallSummary.summary,
-                    sentiment: session.endCallSummary.sentiment,
-                    interested: session.endCallSummary.interested,
-                    loanAmount: session.endCallSummary.loanAmount,
-                    callbackRequired: session.endCallSummary.callbackRequired,
-                    callOutcome: session.endCallSummary.callOutcome,
-                    keyObjection: session.endCallSummary.keyObjection,
-                    nextAction: session.endCallSummary.nextAction,
-                    followUpDate: session.endCallSummary.followUpDate,
-                    priority: session.endCallSummary.priority,
-                });
-                console.log(`[Bridge] Saved AI-reported summary for call ${session.callId}`);
-            }
-            else if (session.transcript.length > 0) {
-                await summarizeCall(session.callId, session.campaignPrompt, session.transcript, durationSeconds);
-            } else {
-                console.warn(`[Bridge] No summary data for call ${session.callId} — saving fallback record.`);
-                await saveCallSummary(session.callId, {
-                    summaryText: `Call ran for ${Math.round(durationSeconds)}s but ended before a summary could be recorded (connection interrupted mid-call). No outcome data available — the customer may have expressed real interest or requests that were not captured. Consider a manual follow-up call.`,
-                    sentiment: "unknown",
-                });
-            }
-        } catch (err) {
-            console.error('[Bridge] Failed to save call summary:', err);
-        }
-
-        cleanupSession(session);
-
-        await campaignQueue.add(
-            'trigger-campaign',
-            { campaignId: session.campaignId },
-            { delay: 3000 }
-        );
-    };
-
     twilioWs.on('close', () => {
-        if (currentSession) endCall(currentSession, 'COMPLETED').catch(() => { });
+        if (currentSession) endCall(currentSession, 'COMPLETED').catch(() => {});
     });
 
     twilioWs.on('error', (err) => {
         console.error('[Twilio WS] Error:', err);
-        if (currentSession) endCall(currentSession, 'FAILED').catch(() => { });
+        if (currentSession) endCall(currentSession, 'FAILED').catch(() => {});
     });
 
     twilioWs.on('message', async (data: Buffer) => {
@@ -273,33 +323,7 @@ wss.on('connection', (twilioWs: WebSocket) => {
 
                 await updateCallStatus(callId, 'IN_PROGRESS', callSid);
 
-                const geminiWs = await connectToGemini(
-                    newSession.campaignPrompt,
-                    newSession.campaignName,
-                    newSession.customerName,
-                    newSession.language,
-                    (audio) => {
-                        twilioWs.send(JSON.stringify({ event: 'media', streamSid, media: { payload: audio } }));
-                    },
-                    (role, text) => {
-                        newSession.transcript.push({ role, text });
-                        appendTranscriptTurn(callId, role, text).catch((err) =>
-                            console.error('[Bridge] Failed to append transcript turn:', err)
-                        );
-                    },
-                    (tool, args) => {
-                        if (tool === 'end_call') {
-                            console.log('[Bridge] end_call tool invoked with args:', args);
-                            newSession.endCallSummary = args;
-                            getTwilioClient().calls(callSid).update({ status: 'completed' }).catch(() => { });
-                        }
-                    },
-                    () => {
-                        console.log('[Gemini] Connection closed — ending call');
-                        getTwilioClient().calls(callSid).update({ status: 'completed' }).catch(() => { });
-                        if (currentSession) endCall(currentSession, 'COMPLETED').catch(() => { });
-                    }
-                );
+                const geminiWs = await connectGeminiWithRetry(newSession, twilioWs, callSid);
                 currentSession.geminiWs = geminiWs;
 
             } else if (message.event === 'media' && currentSession?.geminiWs) {
