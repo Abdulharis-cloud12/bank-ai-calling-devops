@@ -317,9 +317,13 @@ export async function connectToGemini(
                 isSetupComplete = true;
                 logWithTime(`[Gemini] SETUP_COMPLETE @${msgT.toFixed(1)}ms`);
 
+                const initialMessage = priorContext
+                    ? 'The call connection was briefly interrupted. Continue the conversation naturally from exactly where it left off — do not greet the customer again.'
+                    : 'Hello, please start the call.';
+
                 ws.send(JSON.stringify({
                     client_content: {
-                        turns: [{ role: 'user', parts: [{ text: 'Hello, please start the call.' }] }],
+                        turns: [{ role: 'user', parts: [{ text: initialMessage }] }],
                         turn_complete: true,
                     },
                 }));
@@ -441,13 +445,13 @@ export async function connectToGemini(
         });
 
         ws.on('close', (code: number, reason: Buffer) => {
-            logWithTime(`[Gemini] 🔴 WebSocket CLOSED code=${code} reason="${reason.toString()}"`);
+            logWithTime(`[Gemini]  WebSocket CLOSED code=${code} reason="${reason.toString()}"`);
             sessionGates.delete(ws);
             onClose();
         });
 
         ws.on('error', (err) => {
-            warnWithTime(`[Gemini] 🔴 WebSocket ERROR: ${err.message}`);
+            warnWithTime(`[Gemini]  WebSocket ERROR: ${err.message}`);
             reject(err);
         });
     });
@@ -462,7 +466,7 @@ export function sendAudioToGemini(ws: WebSocket, audioBase64: string): void {
     if (ws.readyState !== WebSocket.OPEN) {
         if (gate && !gate.wasClosedLogged) {
             gate.wasClosedLogged = true;
-            warnWithTime(`[Audio] 🔴 Gemini WS not OPEN. Dropping subsequent packets.`);
+            warnWithTime(`[Audio]  Gemini WS not OPEN. Dropping subsequent packets.`);
         }
         return;
     }

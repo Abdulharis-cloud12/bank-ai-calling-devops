@@ -209,7 +209,7 @@ const endCall = async (session: SessionState, finalStatus: 'COMPLETED' | 'FAILED
     );
 };
 
-const MAX_RECONNECT_ATTEMPTS = 1;
+const MAX_RECONNECT_ATTEMPTS = 3;
 
 async function connectGeminiWithRetry(
     session: SessionState,
