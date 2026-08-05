@@ -46,6 +46,9 @@ export default async function CampaignResultsPage({
       sentiment: summary?.sentiment ?? "—",
       loanAmount: summary?.loanAmount ?? "—",
       callbackRequired: summary?.callbackRequired === true ? "Yes" : summary?.callbackRequired === false ? "No" : "—",
+      callOutcome: summary?.callOutcome ? summary.callOutcome.replace(/_/g, " ") : "—",
+      nextAction: summary?.nextAction ?? "—",
+      priority: summary?.priority ?? "—",
       summaryText: summary?.summaryText ?? "—",
       callId: latestCall?.id,
     };
@@ -55,7 +58,7 @@ export default async function CampaignResultsPage({
     <div className="min-h-screen w-full bg-[#E9E0CF] p-8">
       <AutoRefresh intervalMs={8000} />
       <div className="w-full">
-        <Link href={`/campaigns/${campaign.id}`}className="text-sm text-[#5E775E] transition-colors hover:text-[#132B23]">← Back to campaign</Link>
+        <Link href={`/campaigns/${campaign.id}`} className="text-sm text-[#5E775E] transition-colors hover:text-[#132B23]">← Back to campaign</Link>
 
         <div className="mt-3 flex items-center justify-between">
           <h1 className="text-2xl font-semibold text-[#132B23]">
@@ -87,6 +90,9 @@ export default async function CampaignResultsPage({
                 <th className="p-3 font-medium">Sentiment</th>
                 <th className="p-3 font-medium">Loan Amount</th>
                 <th className="p-3 font-medium">Callback</th>
+                <th className="p-3 font-medium">Outcome</th>
+                <th className="p-3 font-medium">Next Action</th>
+                <th className="p-3 font-medium">Priority</th>
                 <th className="p-3 font-medium">Summary</th>
               </tr>
             </thead>
@@ -103,7 +109,7 @@ export default async function CampaignResultsPage({
                   <tr key={i} className={`border-b transition-colors last:border-0 hover:brightness-95 ${rowClass}`}>
                     <td className="p-3 text-[#132B23]">
                       {row.callId ? (
-                        <Link href={`/calls/${row.callId}`}className="transition-colors hover:text-[#5E775E] hover:underline">
+                        <Link href={`/calls/${row.callId}`} className="transition-colors hover:text-[#5E775E] hover:underline">
                           {row.name}
                         </Link>
                       ) : (
@@ -127,6 +133,9 @@ export default async function CampaignResultsPage({
                     <td className="p-3 text-[#5E775E]">{row.sentiment}</td>
                     <td className="p-3 text-[#5E775E]">{row.loanAmount}</td>
                     <td className="p-3 text-[#5E775E]">{row.callbackRequired}</td>
+                    <td className="p-3 text-[#5E775E]">{row.callOutcome}</td>
+                    <td className="p-3 text-[#5E775E]">{row.nextAction}</td>
+                    <td className="p-3 text-[#5E775E]">{row.priority}</td>
                     <td className="max-w-xs truncate p-3 text-[#5E775E]" title={row.summaryText}>
                       {row.summaryText}
                     </td>
