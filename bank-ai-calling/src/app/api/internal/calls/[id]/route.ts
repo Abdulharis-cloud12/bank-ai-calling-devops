@@ -11,9 +11,9 @@ export async function GET(
 
   const { id } = await params;
 
-  const call = await prisma.call.findUnique({
+const call = await prisma.call.findUnique({
     where: { id },
-    include: { customer: true, campaign: true },
+    include: { customer: true, campaign: true, summary: true },
   });
 
   if (!call) {
@@ -35,5 +35,6 @@ export async function GET(
       aiPrompt: call.campaign.aiPrompt,
       voice: call.campaign.voice,
     },
+    summary: call.summary ? { sentiment: call.summary.sentiment } : null,
   });
 }

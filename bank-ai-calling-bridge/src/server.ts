@@ -4,6 +4,7 @@ import { createServer } from 'http';
 import { parse as parseUrl } from 'url';
 import { connectToGemini, sendAudioToGemini, closeGemini, EndCallArgs } from './lib/geminiLive';
 import { getCallDetails, updateCallStatus, appendTranscriptTurn, saveCallSummary, saveRecordingUrl } from './lib/internalApi';
+import { summarizeFromRecording } from './lib/audioSummarization';
 import { summarizeCall } from './lib/summarization';
 import { generateTwiML, getTwilioClient } from './lib/twilio';
 import { campaignQueue } from './lib/campaignQueue';
@@ -98,11 +99,34 @@ const server = createServer(async (req, res) => {
             const recordingStatus = params.get('RecordingStatus');
             console.log(`[Recording] callId=${callId} status=${recordingStatus} url=${recordingUrl}`);
             if (recordingStatus === 'completed' && recordingUrl) {
+                const fullRecordingUrl = `${recordingUrl}.mp3`;
                 try {
-                    await saveRecordingUrl(callId, `${recordingUrl}.mp3`);
+                    await saveRecordingUrl(callId, fullRecordingUrl);
                     console.log(`[Recording] Saved recording URL for call ${callId}`);
                 } catch (err) {
                     console.error(`[Recording] Failed to save recording URL for ${callId}:`, err);
+                }
+                try {
+                    const details = await getCallDetails(callId);
+                    const needsSummary = !details.summary?.sentiment || details.summary.sentiment === 'unknown';
+
+                    if (needsSummary) {
+                        console.log(`[AudioSummary] Generating summary from recording for call ${callId}...`);
+                        const summary = await summarizeFromRecording(
+                            fullRecordingUrl,
+                            details.campaign.aiPrompt,
+                            details.customer.name,
+                        );
+
+                        if (summary) {
+                            await saveCallSummary(callId, summary);
+                            console.log(`[AudioSummary] Saved recording-based summary for call ${callId}`);
+                        } else {
+                            console.warn(`[AudioSummary] Could not generate summary from recording for call ${callId}`);
+                        }
+                    }
+                } catch (err) {
+                    console.error(`[AudioSummary] Error during post-call summarization for ${callId}:`, err);
                 }
             }
         });

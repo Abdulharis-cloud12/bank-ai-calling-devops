@@ -29,6 +29,7 @@ export interface CallDetails {
     call: { id: string; status: string };
     customer: { id: string; name: string; phoneNumber: string; language: string; notes: string | null };
     campaign: { id: string; name: string; aiPrompt: string; voice: string };
+    summary: { sentiment: string | null } | null;
 }
 
 
