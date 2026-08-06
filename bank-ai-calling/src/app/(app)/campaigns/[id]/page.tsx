@@ -6,6 +6,7 @@ import { StartCampaignButton } from "@/components/StartCampaignButton";
 import { AutoRefresh } from "@/components/AutoRefresh";
 import { CreditLimitChecker } from "@/components/CreditLimitChecker";
 import { DeleteCampaignButton } from "@/components/DeleteCampaignButton";
+import { LogManualCallModal } from "@/components/LogManualCallModal";
 
 export default async function CampaignDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
@@ -99,12 +100,13 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
           ) : (
             <div className="space-y-2">
               {campaign.customers.map((c) => (
-                <div key={c.id} className="flex items-center justify-between rounded-lg border border-[#BA9B5F]/30 bg-[#F5F0E6] p-3 text-sm transition-colors hover:bg-[#BA9B5F]/10">
+                <div key={c.id} className="flex items-center justify-between gap-3 rounded-lg border border-[#BA9B5F]/30 bg-[#F5F0E6] p-3 text-sm transition-colors hover:bg-[#BA9B5F]/10">
                   <span className="text-[#132B23]">{c.name}</span>
                   <span className="text-[#5E775E]">{c.phoneNumber}</span>
                   <span className="rounded-full bg-[#BA9B5F]/20 px-2 py-0.5 text-xs text-[#132B23]">
                     {c.status}
                   </span>
+                  {canManage && <LogManualCallModal customerId={c.id} customerName={c.name} />}
                 </div>
               ))}
             </div>

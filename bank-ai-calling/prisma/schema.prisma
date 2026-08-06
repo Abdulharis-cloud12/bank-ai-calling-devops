@@ -1,6 +1,4 @@
-// This is your Prisma schema file — it defines every table in your
-// PostgreSQL database as a TypeScript-friendly model. Prisma reads this
-// file and generates a fully-typed client you import in your code.
+
 
 generator client {
   provider = "prisma-client"
@@ -155,6 +153,10 @@ enum CallStatus {
   FAILED
   NO_ANSWER
 }
+enum CallSource {
+  AI
+  MANUAL
+}
 
 model Call {
   id             String     @id @default(cuid())
@@ -166,14 +168,15 @@ model Call {
 
   twilioCallSid  String?    @unique
   status         CallStatus @default(QUEUED)
+  source         CallSource @default(AI)
 
   startedAt      DateTime?
-    endedAt        DateTime?
-    durationSeconds Int?
-    recordingUrl   String?
+  endedAt        DateTime?
+  durationSeconds Int?
+  recordingUrl   String?
 
-    transcript     Transcript?
-    summary        CallSummary?
+  transcript     Transcript?
+  summary        CallSummary?
 
   createdAt      DateTime   @default(now())
 
