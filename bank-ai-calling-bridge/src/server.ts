@@ -236,14 +236,18 @@ async function connectGeminiWithRetry(
             if (tool === 'end_call') {
                 console.log('[Bridge] end_call tool invoked with args:', args);
                 session.endCallSummary = args;
-                getTwilioClient().calls(callSid).update({ status: 'completed' }).catch(() => {});
+                getTwilioClient().calls(callSid).update({ status: 'completed' }).catch(() => { });
             }
         },
         async () => {
+            if (session.isEnded) {
+                return;
+            }
+
             if (session.endCallSummary) {
                 console.log('[Gemini] Connection closed after end_call — ending call normally');
-                getTwilioClient().calls(callSid).update({ status: 'completed' }).catch(() => {});
-                endCall(session, 'COMPLETED').catch(() => {});
+                getTwilioClient().calls(callSid).update({ status: 'completed' }).catch(() => { });
+                endCall(session, 'COMPLETED').catch(() => { });
                 return;
             }
             if (attempt < MAX_RECONNECT_ATTEMPTS && session.resumptionHandle) {
@@ -253,15 +257,15 @@ async function connectGeminiWithRetry(
                     session.geminiWs = newWs;
                 } catch (err) {
                     console.error('[Gemini] Resumption attempt failed:', err);
-                    getTwilioClient().calls(callSid).update({ status: 'completed' }).catch(() => {});
-                    endCall(session, 'COMPLETED').catch(() => {});
+                    getTwilioClient().calls(callSid).update({ status: 'completed' }).catch(() => { });
+                    endCall(session, 'COMPLETED').catch(() => { });
                 }
                 return;
             }
 
             console.log('[Gemini] Connection closed — ending call');
-            getTwilioClient().calls(callSid).update({ status: 'completed' }).catch(() => {});
-            endCall(session, 'COMPLETED').catch(() => {});
+            getTwilioClient().calls(callSid).update({ status: 'completed' }).catch(() => { });
+            endCall(session, 'COMPLETED').catch(() => { });
         },
         session.resumptionHandle,
         (handle) => {
