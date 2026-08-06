@@ -44,7 +44,7 @@ export async function summarizeFromRecording(
         const audioBuffer = Buffer.from(await audioResponse.arrayBuffer());
         const audioBase64 = audioBuffer.toString('base64');
 
-        const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+       const model = genAI.getGenerativeModel({ model: 'gemini-3.6-flash' });
 
         const prompt = `You are analyzing a recorded bank outbound sales call between an AI agent and a customer named ${customerName}.
 
