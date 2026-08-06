@@ -150,6 +150,7 @@ interface SessionState {
     startTime: number;
     isEnded: boolean;
     endCallSummary: EndCallArgs | null;
+    resumptionHandle: string | null;
 }
 
 const sessions: Map<string, SessionState> = new Map();
@@ -209,7 +210,7 @@ const endCall = async (session: SessionState, finalStatus: 'COMPLETED' | 'FAILED
     );
 };
 
-const MAX_RECONNECT_ATTEMPTS = 0;
+const MAX_RECONNECT_ATTEMPTS = 2;
 
 async function connectGeminiWithRetry(
     session: SessionState,
@@ -217,10 +218,6 @@ async function connectGeminiWithRetry(
     callSid: string,
     attempt: number = 0,
 ): Promise<WebSocket> {
-    const priorContext = attempt > 0 && session.transcript.length > 0
-        ? session.transcript.map((t) => `${t.role === 'AI' ? session.customerName + "'s bank representative" : session.customerName}: ${t.text}`).join('\n')
-        : undefined;
-
     return connectToGemini(
         session.campaignPrompt,
         session.campaignName,
@@ -249,25 +246,27 @@ async function connectGeminiWithRetry(
                 endCall(session, 'COMPLETED').catch(() => {});
                 return;
             }
-
-            if (attempt < MAX_RECONNECT_ATTEMPTS) {
-                console.log(`[Gemini] Unexpected disconnect — attempting reconnect (attempt ${attempt + 1}/${MAX_RECONNECT_ATTEMPTS})`);
+            if (attempt < MAX_RECONNECT_ATTEMPTS && session.resumptionHandle) {
+                console.log(`[Gemini] Unexpected disconnect — resuming session (attempt ${attempt + 1}/${MAX_RECONNECT_ATTEMPTS})`);
                 try {
                     const newWs = await connectGeminiWithRetry(session, twilioWs, callSid, attempt + 1);
                     session.geminiWs = newWs;
                 } catch (err) {
-                    console.error('[Gemini] Reconnect attempt failed:', err);
+                    console.error('[Gemini] Resumption attempt failed:', err);
                     getTwilioClient().calls(callSid).update({ status: 'completed' }).catch(() => {});
                     endCall(session, 'COMPLETED').catch(() => {});
                 }
                 return;
             }
 
-            console.log('[Gemini] Connection closed after retry — ending call');
+            console.log('[Gemini] Connection closed — ending call');
             getTwilioClient().calls(callSid).update({ status: 'completed' }).catch(() => {});
             endCall(session, 'COMPLETED').catch(() => {});
         },
-        priorContext,
+        session.resumptionHandle,
+        (handle) => {
+            session.resumptionHandle = handle;
+        },
     );
 }
 
@@ -277,12 +276,12 @@ wss.on('connection', (twilioWs: WebSocket) => {
     let currentSession: SessionState | null = null;
 
     twilioWs.on('close', () => {
-        if (currentSession) endCall(currentSession, 'COMPLETED').catch(() => {});
+        if (currentSession) endCall(currentSession, 'COMPLETED').catch(() => { });
     });
 
     twilioWs.on('error', (err) => {
         console.error('[Twilio WS] Error:', err);
-        if (currentSession) endCall(currentSession, 'FAILED').catch(() => {});
+        if (currentSession) endCall(currentSession, 'FAILED').catch(() => { });
     });
 
     twilioWs.on('message', async (data: Buffer) => {
@@ -317,6 +316,7 @@ wss.on('connection', (twilioWs: WebSocket) => {
                     startTime: Date.now(),
                     isEnded: false,
                     endCallSummary: null,
+                    resumptionHandle: null,
                 };
                 currentSession = newSession;
                 sessions.set(streamSid, newSession);

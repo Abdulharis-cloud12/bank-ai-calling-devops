@@ -153,13 +153,8 @@ function createSystemPrompt(
     campaignName: string,
     customerName: string,
     language: string,
-    priorContext?: string,
 ): string {
-    const reconnectNote = priorContext
-        ? `\n\nIMPORTANT: The call connection was briefly interrupted. Here is what was already discussed before the interruption:\n${priorContext}\n\nContinue the conversation naturally from here — do NOT greet the customer again or restart the conversation. Pick up as if there was just a brief pause.`
-        : '';
-
-    return `You are ${AGENT_NAME}, calling on behalf of a bank. You are speaking with ${customerName}. Conduct the entire call in "${language}". Translate all instructions dynamically.${reconnectNote}
+    return `You are ${AGENT_NAME}, calling on behalf of a bank. You are speaking with ${customerName}. Conduct the entire call in "${language}". Translate all instructions dynamically.
 
 Campaign brief:
 ${campaignPrompt}
@@ -213,7 +208,8 @@ export async function connectToGemini(
     onTranscriptionReceived: (role: 'CUSTOMER' | 'AI', text: string) => void,
     onToolCall: (toolName: string, args: EndCallArgs) => void,
     onClose: () => void,
-    priorContext?: string,
+    resumptionHandle?: string | null,
+    onResumptionUpdate?: (handle: string) => void,
 ): Promise<WebSocket> {
     return new Promise((resolve, reject) => {
         const ws = new WebSocket(getGeminiWsUrl(), { perMessageDeflate: false });
@@ -251,7 +247,7 @@ export async function connectToGemini(
                         },
                     },
                     system_instruction: {
-                        parts: [{ text: createSystemPrompt(campaignPrompt, campaignName, customerName, language, priorContext) }],
+                        parts: [{ text: createSystemPrompt(campaignPrompt, campaignName, customerName, language) }],
                     },
                     tools: [{
                         function_declarations: [{
@@ -287,6 +283,7 @@ export async function connectToGemini(
                             prefix_padding_ms: LATENCY_OPT_CONFIG.VAD_PREFIX_PADDING_MS,
                         },
                     },
+                    session_resumption: resumptionHandle ? { handle: resumptionHandle } : {},
                 },
             };
 
@@ -316,19 +313,22 @@ export async function connectToGemini(
             if ((response.setupComplete || response.setup_complete) && !isSetupComplete) {
                 isSetupComplete = true;
                 logWithTime(`[Gemini] SETUP_COMPLETE @${msgT.toFixed(1)}ms`);
-
-                const initialMessage = priorContext
-                    ? 'The call connection was briefly interrupted. Continue the conversation naturally from exactly where it left off — do not greet the customer again.'
-                    : 'Hello, please start the call.';
-
-                ws.send(JSON.stringify({
-                    client_content: {
-                        turns: [{ role: 'user', parts: [{ text: initialMessage }] }],
-                        turn_complete: true,
-                    },
-                }));
+                if (!resumptionHandle) {
+                    ws.send(JSON.stringify({
+                        client_content: {
+                            turns: [{ role: 'user', parts: [{ text: 'Hello, please start the call.' }] }],
+                            turn_complete: true,
+                        },
+                    }));
+                }
                 resolve(ws);
                 return;
+            }
+
+            const resumptionUpdate = response.session_resumption_update ?? response.sessionResumptionUpdate;
+            if (resumptionUpdate?.resumable && (resumptionUpdate.new_handle || resumptionUpdate.newHandle)) {
+                const handle = resumptionUpdate.new_handle || resumptionUpdate.newHandle;
+                onResumptionUpdate?.(handle);
             }
 
             if (!content) return;
