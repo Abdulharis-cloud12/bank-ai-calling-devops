@@ -51,6 +51,7 @@ export default async function CampaignResultsPage({
       priority: summary?.priority ?? "—",
       summaryText: summary?.summaryText ?? "—",
       callId: latestCall?.id,
+      source: latestCall?.source ?? null,
     };
   });
 
@@ -84,6 +85,7 @@ export default async function CampaignResultsPage({
             <thead>
               <tr className="border-b border-[#BA9B5F]/30 text-[#132B23]">
                 <th className="p-3 font-medium">Name</th>
+                <th className="p-3 font-medium">Type</th>
                 <th className="p-3 font-medium">Phone</th>
                 <th className="p-3 font-medium">Call Status</th>
                 <th className="p-3 font-medium">Interested</th>
@@ -114,6 +116,15 @@ export default async function CampaignResultsPage({
                         </Link>
                       ) : (
                         row.name
+                      )}
+                    </td>
+                    <td className="p-3">
+                      {row.source === "MANUAL" ? (
+                        <span className="rounded-full bg-[#132B23]/10 px-2 py-0.5 text-xs font-medium text-[#132B23]">Manual</span>
+                      ) : row.source === "AI" ? (
+                        <span className="rounded-full bg-[#5E775E]/20 px-2 py-0.5 text-xs font-medium text-[#132B23]">AI</span>
+                      ) : (
+                        "—"
                       )}
                     </td>
                     <td className="p-3 text-[#5E775E]">{row.phone}</td>

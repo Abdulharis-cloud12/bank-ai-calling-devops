@@ -128,6 +128,11 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
                   <div className="flex items-center justify-between">
                     <span className="text-[#132B23]">{call.customer.name}</span>
                     <div className="flex items-center gap-2">
+                      {call.source === "MANUAL" && (
+                        <span className="rounded-full bg-[#132B23]/10 px-2 py-0.5 text-xs font-medium text-[#132B23]">
+                          Manual
+                        </span>
+                      )}
                       {call.summary?.interested && (
                         <span className="rounded-full bg-[#5E775E]/20 px-2 py-0.5 text-xs font-medium text-[#132B23]">
                           Interested

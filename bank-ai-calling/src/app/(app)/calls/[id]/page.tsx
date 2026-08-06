@@ -50,9 +50,16 @@ export default async function CallDetailPage({
               {call.customer.phoneNumber} · {durationText}
             </p>
           </div>
-          <span className="rounded-full bg-[#BA9B5F]/20 px-3 py-1 text-xs font-medium text-[#132B23]">
-            {call.status}
-          </span>
+          <div className="flex items-center gap-2">
+            {call.source === "MANUAL" && (
+              <span className="rounded-full bg-[#132B23]/10 px-3 py-1 text-xs font-medium text-[#132B23]">
+                Manual
+              </span>
+            )}
+            <span className="rounded-full bg-[#BA9B5F]/20 px-3 py-1 text-xs font-medium text-[#132B23]">
+              {call.status}
+            </span>
+          </div>
         </div>
 
         {!call.summary && (
