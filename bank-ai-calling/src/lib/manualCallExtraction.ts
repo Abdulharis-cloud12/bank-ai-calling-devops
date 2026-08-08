@@ -1,7 +1,4 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
-
 const apiKey = process.env.GOOGLE_GENAI_API_KEY || "";
-const genAI = new GoogleGenerativeAI(apiKey);
 
 const VALID_OUTCOMES = [
     "INTERESTED", "FOLLOW_UP_REQUIRED", "CALL_BACK_REQUESTED", "NOT_INTERESTED",
@@ -20,11 +17,8 @@ export interface ManualCallExtraction {
     priority: string;
 }
 
-
 export async function extractManualCallSummary(rawNotes: string): Promise<ManualCallExtraction | null> {
     try {
-        const model = genAI.getGenerativeModel({ model: "gemini-3.6-flash" });
-
         const prompt = `You are extracting structured information from a salesperson's manual notes about a phone call they just made themselves (not an AI call). Do not rewrite or embellish — extract only what is actually stated.
 
 Salesperson's notes:
@@ -41,10 +35,30 @@ Respond with ONLY a valid JSON object, no other text, with exactly these fields:
   "priority": one of ${VALID_PRIORITIES.join(", ")}
 }`;
 
-        const result = await model.generateContent(prompt);
-        const responseText = result.response.text().trim();
+        const response = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${apiKey}`,
+            {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    contents: [{ parts: [{ text: prompt }] }],
+                }),
+            }
+        );
+
+        if (!response.ok) {
+            const errorText = await response.text().catch(() => "");
+            console.error(`[ManualCallExtraction] API request failed: status=${response.status} body=${errorText}`);
+            return null;
+        }
+
+        const data = await response.json();
+        const responseText: string = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
         const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-        if (!jsonMatch) return null;
+        if (!jsonMatch) {
+            console.error("[ManualCallExtraction] No JSON found in model response");
+            return null;
+        }
 
         const parsed = JSON.parse(jsonMatch[0]);
 
